@@ -121,7 +121,7 @@ const Settings = () => {
   return (
     <SafeAreaView className="flex-1 bg-gray-100">
       {/* Wrapper for Black Background */}
-      <View className="absolute w-full h-[185px] bg-black rounded-b-2xl" />
+      <View className="absolute w-full h-[185px] bg-black rounded-b-3xl" />
 
       {/* Content */}
       <ScrollView className="flex-1">
