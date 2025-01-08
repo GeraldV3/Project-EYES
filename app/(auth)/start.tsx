@@ -73,12 +73,12 @@ const Start: React.FC = () => {
         <CustomButton
           title="Sign In"
           onPress={() => router.replace("/(auth)/sign-in" as Href)}
-          className="bg-black w-[140px] py-4 rounded-lg shadow-lg"
+          className="bg-black w-[140px]"
         />
         <CustomButton
           title="Sign Up"
           onPress={() => setIsModalVisible(true)} // Show modal on Sign Up click
-          className="bg-gray-500 w-[140px] py-4 rounded-lg shadow-lg"
+          className="bg-gray-500 w-[140px]"
         />
       </View>
 
