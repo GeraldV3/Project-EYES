@@ -68,9 +68,9 @@ export const icons = {
 
 export const paragraphs = {
   aboutUs: `
-    At Project EYES, we are driven by a mission to create a more inclusive world where children and differently-abled individuals can thrive in their social environments. Recognizing the unique challenges faced by children with Down syndrome and other disabilities, our project harnesses the potential of affective computing technology to support social communication in meaningful ways. Our focus is on developing solutions that are not only effective but also affordable, discreet, and culturally relevant to our community.  
+    At Project EYES, we are driven by a mission to create a more inclusive world where children and differently-abled individuals can thrive in their social environments. Recognizing the unique challenges faced by children with Down syndrome and other disabilities, our project harnesses the potential of affective computing technology to support social communication in meaningful ways. Our focus is on developing solutions that are not only effective but also affordable, discreet, and culturally relevant to our community.
 
-    Based in Padre Burgos Elementary School, an institution that serves children with diverse needs, including Down syndrome, learning disabilities, and hearing and visual impairments, *Project EYES* prioritizes understanding and addressing the local context. By working closely with educators, families, and experts in the field, we ensure that our tools are tailored to the real-life experiences of our users.  
+    Project EYES prioritizes understanding and addressing the local context. By working closely with educators, families, and experts in the field, we ensure that our tools are tailored to the real-life experiences of our users.
 
     Our team is passionate about pushing the boundaries of assistive technology by combining innovative research, empathy, and collaboration. We believe that every child deserves the opportunity to engage in social interactions confidently and meaningfully. Through our work, we aim to complement existing Augmentative and Alternative Communication (AAC) strategies while filling critical gaps in social communication support. With Project EYES, we are not just developing a tool; we are building a bridge to a more connected, empathetic, and inclusive future.
   `,

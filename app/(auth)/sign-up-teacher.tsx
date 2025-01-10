@@ -93,11 +93,17 @@ const SignUp_Teacher = () => {
 
         console.log("Saving Teacher to Firebase with payload:", payload);
 
-        // Save teacher data to Firebase
-        await set(ref(db, `Users/Teachers/${teacherId}`), payload);
+        // Save teacher data under Users/Teachers/TeacherId
+        await set(ref(db, `Users/Teachers/TeacherId/${teacherId}`), payload);
 
+        // Set active session
         await setActive({ session: completeSignUp.createdSessionId });
-        setShowSuccessModal(true);
+
+        // Navigate to Home and pass teacherId
+        router.push({
+          pathname: "/home",
+          params: { role: "teacher", userId: teacherId },
+        });
       } else {
         setVerification((prev: VerificationState) => ({
           ...prev,

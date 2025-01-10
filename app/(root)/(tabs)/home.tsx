@@ -8,73 +8,36 @@ import {
   Alert,
   FlatList,
   TextInput,
-  Easing,
   Animated,
+  ActivityIndicator,
 } from "react-native";
 import { ReactNativeModal } from "react-native-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
-
-import { images, emotions } from "@/constants";
-
-type Emotion = "Angry" | "Happy" | "Sad" | "Surprised" | "Neutral";
+import { Emotion, emotionsMap, emotionStyles } from "@/app/(api)/emotionConfig";
+import { images } from "@/constants";
+import { getDatabase, ref, get } from "firebase/database";
+import { useLocalSearchParams } from "expo-router";
 
 const Home = () => {
-  const { user } = useUser();
+  const { user } = useUser(); // Get user data from Clerk
   const [emotion, setEmotion] = useState<Emotion | null>(null); // Current detected emotion
-  const [history, setHistory] = useState<Emotion[]>([]); // Emotion detection history
+  const [history, setHistory] = useState<
+    { emotion: Emotion; timestamp: Date }[]
+  >([]); // Updated history type
   const [isModalVisible, setModalVisible] = useState(false); // Modal visibility state
   const [isNameModalVisible, setNameModalVisible] = useState(false); // Name input modal
   const [firstName, setFirstName] = useState(user?.firstName || "");
   const [lastName, setLastName] = useState(user?.lastName || "");
+  const [loading, setLoading] = useState(false); // Track loading state
+  const [teacherId, setTeacherId] = useState<string | null>(null); // Store teacher ID dynamically
+  const [parentId, setParentId] = useState<string | null>(null); // Store parent ID dynamically
 
-  // Animation state
   const animation = useRef(new Animated.Value(0)).current; // Animation value for cycling images
   const [frameIndex, setFrameIndex] = useState(0); // Index for animating frames
 
-  // Emotion-specific styles
-  const emotionStyles: Record<
-    Emotion,
-    { backgroundColor: string; rectangleColor: string; textColor: string }
-  > = {
-    Angry: {
-      backgroundColor: "#FFEFE5",
-      rectangleColor: "#FF843E",
-      textColor: "#782E04",
-    },
-    Happy: {
-      backgroundColor: "#FFFBED",
-      rectangleColor: "#FDDD6F",
-      textColor: "#664F00",
-    },
-    Sad: {
-      backgroundColor: "#EBF0FF",
-      rectangleColor: "#8CA4EE",
-      textColor: "#313A54",
-    },
-    Surprised: {
-      backgroundColor: "#EDF8FF",
-      rectangleColor: "#A1E7EB",
-      textColor: "#3A7478",
-    },
-    Neutral: {
-      backgroundColor: "#FFF0F3",
-      rectangleColor: "#FFA7BC",
-      textColor: "#4D3238",
-    },
-  };
-
-  // Emotion images map
-  const emotionsMap: Record<Emotion, any[]> = {
-    Angry: [emotions.angry_1, emotions.angry_2, emotions.angry_3],
-    Happy: [emotions.happy_1, emotions.happy_2, emotions.happy_3],
-    Sad: [emotions.sad_1, emotions.sad_2, emotions.sad_3],
-    Surprised: [
-      emotions.surprised_1,
-      emotions.surprised_2,
-      emotions.surprised_3,
-    ],
-    Neutral: [emotions.neutral_1, emotions.neutral_2, emotions.neutral_3],
-  };
+  const searchParams = useLocalSearchParams();
+  const role = searchParams?.role || "parent"; // Default to "parent" if not defined
+  const userId = user?.id; // Always fetch the user ID from Clerk
 
   // Show modal to collect names if not provided
   useEffect(() => {
@@ -86,7 +49,6 @@ const Home = () => {
   const handleSaveName = async () => {
     if (firstName.trim() && lastName.trim()) {
       try {
-        // Update user information in Clerk
         await user?.update({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -101,56 +63,146 @@ const Home = () => {
     }
   };
 
-  const handleScan = () => {
-    // Simulate emotion detection (replace with actual logic/API later)
-    const emotions = Object.keys(emotionsMap) as Emotion[];
-    const detectedEmotion =
-      emotions[Math.floor(Math.random() * emotions.length)];
-    setEmotion(detectedEmotion);
-    setHistory((prevHistory) => [detectedEmotion, ...prevHistory]); // Update history
+  // Fetch teacher or parent IDs based on the database structure
+  const fetchIds = async () => {
+    try {
+      const db = getDatabase();
+      const classARef = ref(db, `Users/Teachers/Class-A`);
+      const snapshot = await get(classARef);
 
-    Alert.alert("Emotion Detected", `You are feeling ${detectedEmotion}!`);
-    startAnimation(); // Start animation when an emotion is detected
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+
+        if (role === "teacher") {
+          // If the role is teacher, assign Class-A as Teacher ID
+          setTeacherId("Class-A");
+          setParentId(null); // Teachers don't need a Parent ID
+          console.log(`Role: teacher, Teacher ID assigned: Class-A`);
+        } else if (role === "parent") {
+          // If the role is parent, check for clerkId under Parents
+          const parents = data.Parents || {};
+          const parentEntry = Object.entries(parents).find(
+            ([, parentInfo]: any) => parentInfo.clerkId === userId,
+          );
+
+          if (parentEntry) {
+            setParentId(parentEntry[0]); // The key is the Parent ID
+            setTeacherId("Class-A");
+            console.log(
+              `Role: parent, Parent ID: ${parentEntry[0]}, Teacher ID: Class-A`,
+            );
+          } else {
+            console.warn("No matching parent ID found.");
+            setParentId(null);
+          }
+        } else {
+          console.warn("Invalid role or role not defined.");
+          setTeacherId(null);
+          setParentId(null);
+        }
+      } else {
+        console.warn("No data found in Class-A.");
+      }
+    } catch (error) {
+      console.error("Error fetching IDs:", error);
+    }
   };
 
-  const startAnimation = () => {
-    animation.setValue(0); // Ensure the animation starts from 0
+  useEffect(() => {
+    console.log(`Role passed to Home component: ${role}`);
+  }, [role]);
 
-    Animated.loop(
-      Animated.sequence([
-        // Move from frame 1 to frame 3 with smooth interpolation
-        Animated.timing(animation, {
-          toValue: 2, // Animates through all three frames
-          duration: 3000, // Slower (3 seconds for more natural feel)
-          easing: Easing.inOut(Easing.ease), // Easing for natural movement
-          useNativeDriver: true,
-        }),
-        // Hold at the third frame briefly (like a human pausing)
-        Animated.timing(animation, {
-          toValue: 2, // Keep at frame 3
-          duration: 500, // Hold for 0.5 seconds
-          easing: Easing.linear, // Hold it steady
-          useNativeDriver: true,
-        }),
-        // Move back from frame 3 to frame 1 with smooth interpolation
-        Animated.timing(animation, {
-          toValue: 0, // Animates back to frame 1
-          duration: 3000, // Smooth return
-          easing: Easing.inOut(Easing.ease), // Same easing for symmetry
-          useNativeDriver: true,
-        }),
-      ]),
-    ).start();
+  useEffect(() => {
+    fetchIds(); // Call fetch IDs on mount
+  }, [role, userId]);
+
+  useEffect(() => {
+    console.log(
+      `Role: ${role}, User ID: ${userId}, Teacher ID: ${teacherId}, Parent ID: ${parentId}`,
+    );
+  }, [role, userId, teacherId, parentId]);
+
+  const fetchNgrokUrl = async () => {
+    try {
+      const db = getDatabase();
+      const ngrokRef = ref(db, "ngrok"); // Ensure this matches the Firebase path where the URL is stored
+      const snapshot = await get(ngrokRef);
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const endpoint = data.endpoint; // Use "endpoint" from the Firebase data
+        console.log(`Ngrok URL: ${endpoint}`); // Print the Ngrok URL in the console
+        return endpoint;
+      } else {
+        throw new Error("No ngrok data found in Firebase.");
+      }
+    } catch (error) {
+      console.error("Error fetching ngrok URL from Firebase:", error);
+      throw error;
+    }
+  };
+
+  const handleScan = async () => {
+    setLoading(true); // Show loading spinner
+
+    try {
+      // Fetch the dynamic ngrok URL from Firebase
+      const scanUrl = await fetchNgrokUrl();
+
+      // Prepare the payload
+      const payload = {
+        role: role, // Role of the user (parent or teacher)
+        userId: userId, // Clerk user ID
+      };
+
+      // Make a POST request to the scan_emotion endpoint
+      const response = await fetch(scanUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload), // Send role and userId in the request body
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      // Parse the response data
+      const data = await response.json();
+      const detectedEmotion = data.emotion;
+      const confidence = data.confidence;
+      const name = data.child_name;
+
+      // Update emotion state and history
+      setEmotion(detectedEmotion);
+      setHistory((prevHistory) => [
+        { emotion: detectedEmotion, timestamp: new Date() },
+        ...prevHistory,
+      ]);
+
+      // Display an alert with detected emotion and confidence
+      Alert.alert(
+        "Emotion Detected",
+        `Detected Emotion: ${detectedEmotion}\nConfidence: ${confidence}%\nName: ${name}`,
+      );
+    } catch (error) {
+      console.error("Error detecting emotion:", error);
+
+      // Show an error alert
+      Alert.alert("Error", "Failed to detect emotion. Please try again.");
+    } finally {
+      setLoading(false); // Hide loading spinner
+    }
   };
 
   useEffect(() => {
     if (emotion) {
-      // Cycle through frames for the detected emotion
       const interval = setInterval(() => {
-        setFrameIndex((prev) => (prev + 1) % 3); // Cycle through 3 frames
-      }, 300); // Update every 300ms
+        setFrameIndex((prev) => (prev + 1) % 3);
+      }, 300);
 
-      return () => clearInterval(interval); // Clear interval when emotion changes
+      return () => clearInterval(interval);
     }
   }, [emotion]);
 
@@ -180,7 +232,6 @@ const Home = () => {
             alignItems: "center",
           }}
         >
-          {/* Modal Header */}
           <Text
             style={{
               fontSize: 20,
@@ -192,8 +243,6 @@ const Home = () => {
           >
             Tell me about yourself
           </Text>
-
-          {/* First Name Input */}
           <TextInput
             value={firstName}
             onChangeText={setFirstName}
@@ -210,8 +259,6 @@ const Home = () => {
               backgroundColor: "#f9f9f9",
             }}
           />
-
-          {/* Last Name Input */}
           <TextInput
             value={lastName}
             onChangeText={setLastName}
@@ -228,8 +275,6 @@ const Home = () => {
               backgroundColor: "#f9f9f9",
             }}
           />
-
-          {/* Save Button */}
           <TouchableOpacity
             onPress={handleSaveName}
             style={{
@@ -248,6 +293,25 @@ const Home = () => {
         </View>
       </ReactNativeModal>
 
+      {loading && (
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            justifyContent: "center",
+            alignItems: "center",
+            backgroundColor: "rgba(0, 0, 0, 0.5)", // Semi-transparent background
+            zIndex: 10,
+          }}
+        >
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={{ color: "white", marginTop: 10 }}>Processing...</Text>
+        </View>
+      )}
+
       {/* Header Section */}
       <View className="flex-row justify-between items-center mt-5">
         <Text className="text-2xl font-bold text-gray-800">
@@ -257,10 +321,7 @@ const Home = () => {
           onPress={() => setModalVisible(true)}
           className="flex justify-center items-center w-10 h-10 rounded-full shadow-md"
         >
-          <Image
-            source={images.history} // Replace with a clock icon
-            className="w-10 h-10 "
-          />
+          <Image source={images.history} className="w-10 h-10" />
         </TouchableOpacity>
       </View>
 
@@ -276,7 +337,6 @@ const Home = () => {
                 alignItems: "center",
               }}
             >
-              {/* Rectangle */}
               <View
                 style={{
                   marginBottom: 100,
@@ -308,22 +368,21 @@ const Home = () => {
                 >
                   {emotion}
                 </Text>
-                {/* Animated Emoji */}
                 <Animated.Image
-                  source={emotionsMap[emotion][frameIndex]} // Show current frame of the animation
+                  source={emotionsMap[emotion][frameIndex]}
                   style={{
                     resizeMode: "contain",
                     width: 380,
                     height: 220,
                     opacity: animation.interpolate({
                       inputRange: [0, 1, 2],
-                      outputRange: [0.8, 1, 0.8], // Slight opacity change for realism
+                      outputRange: [0.8, 1, 0.8],
                     }),
                     transform: [
                       {
                         scale: animation.interpolate({
                           inputRange: [0, 1, 2],
-                          outputRange: [1, 1.05, 1], // Slight scaling for smoother feel
+                          outputRange: [1, 1.05, 1],
                         }),
                       },
                     ],
@@ -333,7 +392,7 @@ const Home = () => {
             </View>
           </View>
         ) : (
-          <Image source={images.face} className="w-36 h-36 mb-20 " />
+          <Image source={images.face} className="w-36 h-36 mb-20" />
         )}
         <TouchableOpacity
           onPress={handleScan}
@@ -366,7 +425,6 @@ const Home = () => {
             elevation: 5,
           }}
         >
-          {/* Close Button */}
           <TouchableOpacity
             onPress={() => setModalVisible(false)}
             style={{
@@ -400,46 +458,56 @@ const Home = () => {
             <FlatList
               data={history}
               keyExtractor={(item, index) => index.toString()}
-              renderItem={({ item, index }) => (
+              renderItem={({ item }) => (
                 <View
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    backgroundColor: emotionStyles[item].backgroundColor,
+                    backgroundColor:
+                      emotionStyles[item.emotion].backgroundColor,
                     borderRadius: 12,
                     padding: 10,
                     marginBottom: 10,
                   }}
                 >
-                  {/* Emotion Icon */}
                   <Image
-                    source={emotionsMap[item][0]} // Static image from the emotion
+                    source={emotionsMap[item.emotion][0]}
                     style={{ width: 40, height: 40, marginRight: 10 }}
                   />
-                  {/* Emotion Text and Time */}
                   <View style={{ flex: 1 }}>
                     <Text
                       style={{
                         fontSize: 16,
                         fontWeight: "bold",
-                        color: emotionStyles[item].textColor,
+                        color: emotionStyles[item.emotion].textColor,
                       }}
                     >
-                      {item}
+                      {item.emotion}
                     </Text>
                     <Text
                       style={{
                         fontSize: 14,
-                        color: emotionStyles[item].textColor,
+                        color: emotionStyles[item.emotion].textColor,
                         opacity: 0.8,
                       }}
                     >
-                      {index + 1} mins. ago{" "}
-                      {/* Replace with actual timestamp logic */}
+                      {new Date(item.timestamp).toLocaleTimeString()}
                     </Text>
                   </View>
                 </View>
               )}
+              ListEmptyComponent={
+                <Text
+                  style={{
+                    fontSize: 16,
+                    textAlign: "center",
+                    color: "#888",
+                    marginTop: 20,
+                  }}
+                >
+                  No history available
+                </Text>
+              }
             />
           ) : (
             <Text style={{ fontSize: 16, textAlign: "center", color: "#888" }}>

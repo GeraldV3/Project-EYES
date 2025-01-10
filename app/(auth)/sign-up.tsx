@@ -122,7 +122,7 @@ const SignUp = () => {
         const parentId = completeSignUp.createdUserId;
 
         // Specify the teacher ID (You can pass it dynamically as required)
-        const teacherId = "SPECIFY_TEACHER_ID_HERE";
+        const teacherId = "Class-A";
 
         // Prepare the payload with face recognition data
         const payload = {
