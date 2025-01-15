@@ -15,7 +15,7 @@ import { ReactNativeModal } from "react-native-modal";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Emotion, emotionsMap, emotionStyles } from "@/app/(api)/emotionConfig";
 import { images } from "@/constants";
-import { getDatabase, ref, get } from "firebase/database";
+import { getDatabase, ref, get, onValue } from "firebase/database";
 import { useLocalSearchParams } from "expo-router";
 
 const Home = () => {
@@ -35,17 +35,11 @@ const Home = () => {
   const animation = useRef(new Animated.Value(0)).current; // Animation value for cycling images
   const [frameIndex, setFrameIndex] = useState(0); // Index for animating frames
 
-  const searchParams = useLocalSearchParams();
-  const role = searchParams?.role || "parent"; // Default to "parent" if not defined
-  const userId = user?.id; // Always fetch the user ID from Clerk
+  const [role, setRole] = useState<string | null>(null); // Dynamically fetched role
+  const userId = user?.id; // Clerk user ID
+  const [ngrokUrl, setNgrokUrl] = useState(null);
 
-  // Show modal to collect names if not provided
-  useEffect(() => {
-    if (!user?.firstName || !user?.lastName) {
-      setNameModalVisible(true);
-    }
-  }, [user]);
-
+  // Function to handle saving the name
   const handleSaveName = async () => {
     if (firstName.trim() && lastName.trim()) {
       try {
@@ -54,6 +48,7 @@ const Home = () => {
           lastName: lastName.trim(),
         });
         setNameModalVisible(false);
+        Alert.alert("Success", "Your name has been updated.");
       } catch (error) {
         Alert.alert("Error", "Failed to update your name. Please try again.");
         console.error("Update Error:", error);
@@ -62,6 +57,83 @@ const Home = () => {
       Alert.alert("Error", "Please enter both first and last names.");
     }
   };
+
+  // Automatically open the modal if the first or last name is not set
+  useEffect(() => {
+    if (!user?.firstName || !user?.lastName) {
+      setNameModalVisible(true);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const fetchRole = async () => {
+      try {
+        const db = getDatabase();
+
+        console.log("Fetching role for User ID:", userId);
+
+        // Check for teacher role
+        const teacherRef = ref(db, `Users/Teachers/TeacherId/${userId}`);
+        const teacherSnapshot = await get(teacherRef);
+        console.log("Teacher Snapshot exists:", teacherSnapshot.exists());
+
+        if (teacherSnapshot.exists()) {
+          setRole("teacher");
+          console.log("Role set to 'teacher' for User ID:", userId);
+          return;
+        }
+
+        // Check for parent role
+        const parentRef = ref(db, `Users/Teachers/Class-A/Parents/${userId}`);
+        const parentSnapshot = await get(parentRef);
+        console.log("Parent Snapshot exists:", parentSnapshot.exists());
+
+        if (parentSnapshot.exists()) {
+          setRole("parent");
+          console.log("Role set to 'parent' for User ID:", userId);
+          return;
+        }
+
+        // No role found
+        console.warn("No role found for User ID:", userId);
+        setRole("unknown"); // Optional: Handle undefined role
+      } catch (error) {
+        console.error("Error in fetchRole:", error);
+      }
+    };
+
+    if (!role && userId) {
+      console.log("Triggering fetchRole. Current role is null.");
+      fetchRole();
+    }
+  }, [userId, role]);
+
+  // Function to listen for Ngrok URL changes
+  const listenForNgrokUrl = () => {
+    try {
+      const db = getDatabase();
+      const ngrokRef = ref(db, "ngrok"); // Path in Firebase database
+
+      // Listen for real-time changes
+      onValue(ngrokRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          const endpoint = data.endpoint; // Get the "endpoint" field
+          console.log(`Ngrok URL updated: ${endpoint}`);
+          setNgrokUrl(endpoint); // Update state with the new URL
+        } else {
+          console.warn("Ngrok URL not found in Firebase.");
+        }
+      });
+    } catch (error) {
+      console.error("Error listening for Ngrok URL updates:", error);
+    }
+  };
+
+  // Call the listener on component mount
+  useEffect(() => {
+    listenForNgrokUrl();
+  }, []);
 
   // Fetch teacher or parent IDs based on the database structure
   const fetchIds = async () => {
@@ -74,12 +146,9 @@ const Home = () => {
         const data = snapshot.val();
 
         if (role === "teacher") {
-          // If the role is teacher, assign Class-A as Teacher ID
           setTeacherId("Class-A");
           setParentId(null); // Teachers don't need a Parent ID
-          console.log(`Role: teacher, Teacher ID assigned: Class-A`);
         } else if (role === "parent") {
-          // If the role is parent, check for clerkId under Parents
           const parents = data.Parents || {};
           const parentEntry = Object.entries(parents).find(
             ([, parentInfo]: any) => parentInfo.clerkId === userId,
@@ -88,9 +157,6 @@ const Home = () => {
           if (parentEntry) {
             setParentId(parentEntry[0]); // The key is the Parent ID
             setTeacherId("Class-A");
-            console.log(
-              `Role: parent, Parent ID: ${parentEntry[0]}, Teacher ID: Class-A`,
-            );
           } else {
             console.warn("No matching parent ID found.");
             setParentId(null);
@@ -108,6 +174,11 @@ const Home = () => {
     }
   };
 
+  useEffect(() => {
+    if (role && userId) {
+      fetchIds();
+    }
+  }, [role, userId]);
   useEffect(() => {
     console.log(`Role passed to Home component: ${role}`);
   }, [role]);
@@ -148,31 +219,60 @@ const Home = () => {
     try {
       // Fetch the dynamic ngrok URL from Firebase
       const scanUrl = await fetchNgrokUrl();
+      if (!scanUrl) {
+        throw new Error("Backend URL not found. Please try again later.");
+      }
 
-      // Prepare the payload
+      // Prepare the payload with role and userId
       const payload = {
-        role: role, // Role of the user (parent or teacher)
-        userId: userId, // Clerk user ID
+        role,
+        userId,
       };
 
-      // Make a POST request to the scan_emotion endpoint
+      // Send a POST request to the scan_emotion endpoint
       const response = await fetch(scanUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload), // Send role and userId in the request body
+        body: JSON.stringify(payload),
       });
 
+      // Check if the response is not OK
       if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
+        const errorText = `HTTP error! Status: ${response.status}`;
+        console.error(errorText);
+        throw new Error(errorText);
       }
 
-      // Parse the response data
+      // Parse the response JSON
       const data = await response.json();
-      const detectedEmotion = data.emotion;
-      const confidence = data.confidence;
-      const name = data.child_name;
+
+      // Handle "No face detected in front of the camera" scenario
+      if (
+        data.message &&
+        data.message === "No person in front of the camera."
+      ) {
+        Alert.alert(
+          "No Face Detected",
+          "Please ensure your face is clearly visible to the camera.",
+        );
+        setEmotion(null); // Reset the emotion
+        return;
+      }
+
+      // Handle "This is not your child" scenario
+      if (data.error && data.error === "This is not your child.") {
+        Alert.alert(
+          "Face Mismatch",
+          "This is not your child's face. Please try again.",
+        );
+        setEmotion(null); // Reset the emotion
+        return;
+      }
+
+      // Extract emotion details from the response
+      const { emotion: detectedEmotion, confidence, child_name: name } = data;
 
       // Update emotion state and history
       setEmotion(detectedEmotion);
@@ -181,16 +281,18 @@ const Home = () => {
         ...prevHistory,
       ]);
 
-      // Display an alert with detected emotion and confidence
+      // Optionally alert the user with detected emotion and child name
       Alert.alert(
         "Emotion Detected",
-        `Detected Emotion: ${detectedEmotion}\nConfidence: ${confidence}%\nName: ${name}`,
+        `Emotion: ${detectedEmotion}\nConfidence: ${confidence}%\nName: ${name || "Unknown"}`,
       );
     } catch (error) {
-      console.error("Error detecting emotion:", error);
-
-      // Show an error alert
-      Alert.alert("Error", "Failed to detect emotion. Please try again.");
+      if (error instanceof Error) {
+        console.error("Error during scan:", error.message);
+      } else {
+        console.error("Error during scan:", error);
+      }
+      Alert.alert("Error", "Something went wrong. Please try again.");
     } finally {
       setLoading(false); // Hide loading spinner
     }
@@ -205,6 +307,61 @@ const Home = () => {
       return () => clearInterval(interval);
     }
   }, [emotion]);
+
+  // Fetch emotion history from Firebase
+  const fetchEmotionHistory = async () => {
+    if (!userId) {
+      console.warn("User ID is not defined.");
+      return;
+    }
+
+    try {
+      const db = getDatabase();
+      const emotionRef = ref(
+        db,
+        `Users/Teachers/Class-A/Parents/${userId}/emotions`,
+      );
+      const snapshot = await get(emotionRef);
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+
+        // Define the expected structure of emotion data
+        type EmotionData = {
+          type: Emotion; // Make sure this matches your Emotion type
+          time: number; // Assuming time is a timestamp
+        };
+
+        // Convert Firebase object to array with type casting
+        const emotionHistory = Object.entries(data).map(([key, value]) => {
+          const typedValue = value as EmotionData; // Explicitly cast `value` to EmotionData
+          return {
+            emotion: typedValue.type || "Unknown", // Ensure it's of type Emotion
+            timestamp: typedValue.time ? new Date(typedValue.time) : new Date(),
+          };
+        });
+
+        // Sort by timestamp (most recent first)
+        emotionHistory.sort(
+          (a, b) => b.timestamp.getTime() - a.timestamp.getTime(),
+        );
+
+        setHistory(emotionHistory); // Update history state with the processed data
+      } else {
+        console.warn("No emotion history found in Firebase.");
+        setHistory([]); // Clear history if no data found
+      }
+    } catch (error) {
+      console.error("Error fetching emotion history:", error);
+      Alert.alert("Error", "Failed to fetch emotion history.");
+    }
+  };
+
+  useEffect(() => {
+    if (isModalVisible) {
+      fetchEmotionHistory();
+    }
+  }, [isModalVisible]);
 
   return (
     <SafeAreaView
@@ -464,14 +621,14 @@ const Home = () => {
                     flexDirection: "row",
                     alignItems: "center",
                     backgroundColor:
-                      emotionStyles[item.emotion].backgroundColor,
+                      emotionStyles[item.emotion]?.backgroundColor || "#f0f0f0",
                     borderRadius: 12,
                     padding: 10,
                     marginBottom: 10,
                   }}
                 >
                   <Image
-                    source={emotionsMap[item.emotion][0]}
+                    source={emotionsMap[item.emotion][0]} // Use the first image for the emotion
                     style={{ width: 40, height: 40, marginRight: 10 }}
                   />
                   <View style={{ flex: 1 }}>
@@ -479,7 +636,7 @@ const Home = () => {
                       style={{
                         fontSize: 16,
                         fontWeight: "bold",
-                        color: emotionStyles[item.emotion].textColor,
+                        color: emotionStyles[item.emotion]?.textColor || "#000",
                       }}
                     >
                       {item.emotion}
@@ -487,27 +644,18 @@ const Home = () => {
                     <Text
                       style={{
                         fontSize: 14,
-                        color: emotionStyles[item.emotion].textColor,
+                        color: emotionStyles[item.emotion]?.textColor || "#666",
                         opacity: 0.8,
                       }}
                     >
-                      {new Date(item.timestamp).toLocaleTimeString()}
+                      {new Date(item.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </Text>
                   </View>
                 </View>
               )}
-              ListEmptyComponent={
-                <Text
-                  style={{
-                    fontSize: 16,
-                    textAlign: "center",
-                    color: "#888",
-                    marginTop: 20,
-                  }}
-                >
-                  No history available
-                </Text>
-              }
             />
           ) : (
             <Text style={{ fontSize: 16, textAlign: "center", color: "#888" }}>

@@ -230,7 +230,7 @@ const SignUp = () => {
                 router.push("/(auth)/face-recognition");
               }
             }}
-            className={`mt-6 ${!form.profilePicture ? "bg-gray-400" : ""}`}
+            className={`mt-6 ${!form.profilePicture ? "bg-black-500" : "bg-success-500"}`}
           />
 
           <CustomButton

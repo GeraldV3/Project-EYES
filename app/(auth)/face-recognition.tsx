@@ -62,7 +62,7 @@ const FaceDetection = () => {
       const proceedToCamera = await new Promise<boolean>((resolve) => {
         Alert.alert(
           "Tip",
-          "For better accuracy, ensure good lighting or use the flash while capturing the image.",
+          "For better accuracy, ensure good lighting while capturing the image.",
           [{ text: "OK", onPress: () => resolve(true) }],
         );
       });
@@ -264,7 +264,7 @@ const FaceDetection = () => {
             </Text>
             <Text>Scan the face to verify identity</Text>
             <Text style={{ marginTop: 8, fontStyle: "italic", color: "gray" }}>
-              Tip: Use flash or ensure good lighting for better accuracy.
+              Tip: Please ensure good lighting for better accuracy.
             </Text>
           </View>
 
