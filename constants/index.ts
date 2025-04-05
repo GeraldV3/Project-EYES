@@ -27,6 +27,7 @@ import face from "@/assets/images/face.png";
 import email from "@/assets/icons/email.png";
 import lock from "@/assets/icons/lock.png";
 import person from "@/assets/icons/person.png";
+import graph from "@/assets/icons/line-chart.png";
 
 export const images = {
   onboarding1,
@@ -64,6 +65,7 @@ export const icons = {
   email,
   lock,
   person,
+  graph,
 };
 
 export const paragraphs = {

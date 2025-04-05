@@ -79,6 +79,21 @@ export default function Layout() {
       />
 
       <Tabs.Screen
+        name="graph"
+        options={{
+          title: "graph",
+          headerShown: false,
+          tabBarIcon: ({ focused }) => (
+            <TabIconWithLabel
+              focused={focused}
+              source={icons.graph}
+              label="Graph"
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
